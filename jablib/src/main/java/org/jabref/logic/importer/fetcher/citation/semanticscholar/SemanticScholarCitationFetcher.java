@@ -10,10 +10,10 @@ import java.util.Optional;
 import org.jabref.logic.importer.FetcherException;
 import org.jabref.logic.importer.ImporterPreferences;
 import org.jabref.logic.importer.fetcher.CustomizableKeyFetcher;
-import org.jabref.logic.importer.fetcher.SemanticScholar;
 import org.jabref.logic.importer.fetcher.citation.CitationFetcher;
 import org.jabref.logic.l10n.Localization;
 import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.model.entry.BibEntry;
 
 import com.google.gson.Gson;
@@ -34,10 +34,10 @@ public class SemanticScholarCitationFetcher implements CitationFetcher, Customiz
 
     private static final Gson GSON = new Gson();
 
-    private final ImporterPreferences importerPreferences;
+    private final WebResources webResources;
 
     public SemanticScholarCitationFetcher(ImporterPreferences importerPreferences) {
-        this.importerPreferences = importerPreferences;
+        this.webResources = new WebResources(importerPreferences);
     }
 
     public Optional<URI> getCitationCountApiUri(BibEntry entry) {
@@ -71,8 +71,7 @@ public class SemanticScholarCitationFetcher implements CitationFetcher, Customiz
             throw new FetcherException("Malformed URL", e);
         }
 
-        URLDownload urlDownload = new URLDownload(importerPreferences, citationsUrl);
-        importerPreferences.getApiKey(SemanticScholar.FETCHER_NAME).ifPresent(apiKey -> urlDownload.addHeader("x-api-key", apiKey));
+        URLDownload urlDownload = webResources.of(citationsUrl);
 
         CitationsResponse citationsResponse = GSON.fromJson(urlDownload.asString(), CitationsResponse.class);
 
@@ -98,8 +97,7 @@ public class SemanticScholarCitationFetcher implements CitationFetcher, Customiz
             throw new FetcherException("Malformed URL", e);
         }
 
-        URLDownload urlDownload = new URLDownload(referencesUrl);
-        importerPreferences.getApiKey(SemanticScholar.FETCHER_NAME).ifPresent(apiKey -> urlDownload.addHeader("x-api-key", apiKey));
+        URLDownload urlDownload = webResources.of(referencesUrl);
         String response = urlDownload.asString();
         ReferencesResponse referencesResponse = GSON.fromJson(response, ReferencesResponse.class);
 
@@ -140,8 +138,7 @@ public class SemanticScholarCitationFetcher implements CitationFetcher, Customiz
             throw new FetcherException("Malformed URL", e);
         }
 
-        URLDownload urlDownload = new URLDownload(referencesUrl);
-        importerPreferences.getApiKey(SemanticScholar.FETCHER_NAME).ifPresent(apiKey -> urlDownload.addHeader("x-api-key", apiKey));
+        URLDownload urlDownload = webResources.of(referencesUrl);
         String result;
         try {
             result = urlDownload.asString();

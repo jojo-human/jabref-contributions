@@ -49,7 +49,6 @@ import org.jabref.model.http.SimpleHttpResponse;
 import kong.unirest.core.HttpResponse;
 import kong.unirest.core.Unirest;
 import kong.unirest.core.UnirestException;
-import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,8 +80,8 @@ public class URLDownload {
     private final URL source;
     private final Map<String, String> parameters = new HashMap<>();
 
-    // In case Unpaywall should be supported, this should be non-null
-    private @Nullable ImporterPreferences importerPreferences;
+    private final ImporterPreferences importerPreferences;
+    private final ProviderPolicies providerPolicies;
 
     private String postData = "";
     private Duration connectTimeout = DEFAULT_CONNECT_TIMEOUT;
@@ -98,7 +97,13 @@ public class URLDownload {
 
     /// @param source The URL to download.
     public URLDownload(URL source) {
+        this(ImporterPreferences.getDefault(), source, ProviderPolicies.NONE);
+    }
+
+    URLDownload(ImporterPreferences importerPreferences, URL source, ProviderPolicies providerPolicies) {
         this.source = source;
+        this.importerPreferences = importerPreferences;
+        this.providerPolicies = providerPolicies;
         this.addHeader("User-Agent", URLDownload.USER_AGENT);
 
         try {
@@ -111,11 +116,6 @@ public class URLDownload {
             LOGGER.error("Could not initialize SSL context", e);
             sslContext = null;
         }
-    }
-
-    public URLDownload(@NonNull ImporterPreferences importerPreferences, @NonNull URL citationsUrl) {
-        this(citationsUrl);
-        this.importerPreferences = importerPreferences;
     }
 
     public URL getSource() {
@@ -345,14 +345,18 @@ public class URLDownload {
     ///
     /// @return an open connection
     public URLConnection openConnection() throws FetcherException {
-        Optional<ProviderPolicy> policy = ProviderPolicies.forUrl(source);
+        Optional<ProviderPolicy> policy = providerPolicies.forUrl(source);
         if (policy.isEmpty()) {
             return connect(source);
         }
-        ProviderPolicy.Request request = policy.get().identify(source);
-        request.headers().forEach(this::addHeader);
-        LOGGER.debug("Applying the {} policy to {}", policy.get().getProviderName(), FetcherException.getRedactedUrl(request.url().toString()));
-        return policy.get().execute(request.url(), () -> connect(request.url()));
+        try {
+            URL identified = policy.get().identify(source);
+            policy.get().identificationHeaders().forEach(parameters::putIfAbsent);
+            LOGGER.debug("Applying the {} policy to {}", policy.get().getProviderName(), FetcherException.getRedactedUrl(identified.toString()));
+            return policy.get().execute(identified, () -> connect(identified));
+        } catch (IllegalArgumentException e) {
+            throw new FetcherException(source, e);
+        }
     }
 
     private URLConnection connect(URL target) throws FetcherException {
@@ -380,15 +384,11 @@ public class URLDownload {
                 String newUrl = connection.getHeaderField("location");
 
                 if (newUrl.startsWith("https://api.unpaywall.org/")) {
-                    if (importerPreferences == null) {
-                        LOGGER.warn("importerPreferences not set, but call to Unpaywall");
+                    Optional<String> apiKey = importerPreferences.getApiKey(UnpaywallFetcher.FETCHER_NAME);
+                    if (StringUtil.isBlank(apiKey)) { // No checking for enablement of Unpaywall, because used differently
+                        LOGGER.warn("No email configured for Unpaywall");
                     } else {
-                        Optional<String> apiKey = importerPreferences.getApiKey(UnpaywallFetcher.FETCHER_NAME);
-                        if (StringUtil.isBlank(apiKey)) { // No checking for enablement of Unpaywall, because used differently
-                            LOGGER.warn("No email configured for Unpaywall");
-                        } else {
-                            newUrl = newUrl.replace("<INSERT_YOUR_EMAIL>", apiKey.get());
-                        }
+                        newUrl = newUrl.replace("<INSERT_YOUR_EMAIL>", apiKey.get());
                     }
                 }
 
@@ -396,7 +396,7 @@ public class URLDownload {
                 try {
                     httpURLConnection.disconnect();
                     // multiple redirects are implemented by this recursion
-                    connection = new URLDownload(newUrl).openConnection();
+                    connection = new URLDownload(importerPreferences, URLUtil.create(newUrl), providerPolicies).openConnection();
                 } catch (MalformedURLException e) {
                     throw new FetcherException("Could not open URL Download", e);
                 }

@@ -14,6 +14,7 @@ import org.jabref.logic.importer.ImporterPreferences;
 import org.jabref.logic.importer.fetcher.CrossRef;
 import org.jabref.logic.importer.fetcher.citation.CitationFetcher;
 import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.model.entry.BibEntry;
 import org.jabref.model.entry.field.StandardField;
 import org.jabref.model.entry.identifier.DOI;
@@ -32,11 +33,11 @@ public class OpenCitationsFetcher implements CitationFetcher {
     private static final String API_BASE_URL = "https://api.opencitations.net/index/v2";
     private static final Gson GSON = new Gson();
 
-    private final ImporterPreferences importerPreferences;
+    private final WebResources webResources;
     private final CrossRef crossRefFetcher;
 
     public OpenCitationsFetcher(ImporterPreferences importerPreferences) {
-        this.importerPreferences = importerPreferences;
+        this.webResources = new WebResources(importerPreferences);
         this.crossRefFetcher = new CrossRef(importerPreferences);
     }
 
@@ -84,9 +85,7 @@ public class OpenCitationsFetcher implements CitationFetcher {
 
         try {
             URL url = apiUri.toURL();
-            URLDownload urlDownload = new URLDownload(importerPreferences, url);
-            importerPreferences.getApiKey(getName())
-                               .ifPresent(apiKey -> urlDownload.addHeader("authorization", apiKey));
+            URLDownload urlDownload = webResources.of(url);
 
             String jsonResponse = urlDownload.asString();
             CitationItem[] citationItems = GSON.fromJson(jsonResponse, CitationItem[].class);
@@ -152,9 +151,7 @@ public class OpenCitationsFetcher implements CitationFetcher {
 
         try {
             URL url = apiUri.get().toURL();
-            URLDownload urlDownload = new URLDownload(importerPreferences, url);
-            importerPreferences.getApiKey(getName())
-                               .ifPresent(apiKey -> urlDownload.addHeader("authorization", apiKey));
+            URLDownload urlDownload = webResources.of(url);
 
             String jsonResponse = urlDownload.asString();
             CountResponse countResponse = GSON.fromJson(jsonResponse, CountResponse.class);

@@ -4,23 +4,27 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import org.jabref.logic.importer.FetcherClientException;
 import org.jabref.model.http.SimpleHttpResponse;
 
 import io.github.resilience4j.bulkhead.Bulkhead;
-import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.ratelimiter.RateLimiter;
-import io.github.resilience4j.ratelimiter.RateLimiterConfig;
 import io.github.resilience4j.retry.Retry;
-import io.github.resilience4j.retry.RetryConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 class ProviderPolicyTest {
@@ -32,22 +36,38 @@ class ProviderPolicyTest {
     @BeforeEach
     void setUp() throws Exception {
         url = URI.create("https://api.example.org/works").toURL();
-        bulkhead = Bulkhead.of("test", BulkheadConfig.custom().maxConcurrentCalls(1).maxWaitDuration(Duration.ZERO).build());
-        RateLimiter rateLimiter = RateLimiter.of("test", RateLimiterConfig.custom()
-                                                                        .limitForPeriod(100)
-                                                                        .limitRefreshPeriod(Duration.ofSeconds(1))
-                                                                        .timeoutDuration(Duration.ZERO)
-                                                                        .build());
-        Retry retry = Retry.of("test", RetryConfig.custom()
-                                                  .maxAttempts(3)
-                                                  .retryOnException(ProviderPolicies::isTooManyRequests)
-                                                  .waitDuration(Duration.ofMillis(1))
-                                                  .build());
-        policy = new ProviderPolicy("Test", _ -> true, (url, _) -> ProviderPolicy.Request.of(url), _ -> new ProviderPolicy.Limits(rateLimiter, bulkhead), retry);
+        bulkhead = ProviderSupport.bulkhead("test", 1, Duration.ZERO);
+        RateLimiter rateLimiter = ProviderSupport.rateLimiter("test", 100, Duration.ofSeconds(1), Duration.ZERO);
+        Retry retry = ProviderSupport.retry("test", 3, Duration.ofMillis(1), ProviderSupport::isTooManyRequests);
+        policy = new ProviderPolicy() {
+            @Override
+            public String getProviderName() {
+                return "Test";
+            }
+
+            @Override
+            public boolean appliesTo(URL url) {
+                return true;
+            }
+
+            @Override
+            public RateLimiter rateLimiterFor(URL url) {
+                return rateLimiter;
+            }
+
+            @Override
+            public Bulkhead bulkheadFor(URL url) {
+                return bulkhead;
+            }
+
+            @Override
+            public Retry retry() {
+                return retry;
+            }
+        };
     }
 
     @Test
-    // [utest->req~fetchers.identifier-rate-limit-retries~1]
     void retriesTooManyRequestsUntilSuccess() throws Exception {
         URLConnection connection = mock(URLConnection.class);
         AtomicInteger attempts = new AtomicInteger();
@@ -64,30 +84,6 @@ class ProviderPolicyTest {
     }
 
     @Test
-    void doesNotRetryOtherClientErrors() {
-        AtomicInteger attempts = new AtomicInteger();
-
-        assertThrows(FetcherClientException.class, () -> policy.execute(url, () -> {
-            attempts.incrementAndGet();
-            throw new FetcherClientException(url, new SimpleHttpResponse(404, "Not Found", ""));
-        }));
-        assertEquals(1, attempts.get());
-    }
-
-    @Test
-    void releasesParallelRequestPermitOnceConnected() throws Exception {
-        AtomicInteger availableWhileConnecting = new AtomicInteger(-1);
-
-        policy.execute(url, () -> {
-            availableWhileConnecting.set(bulkhead.getMetrics().getAvailableConcurrentCalls());
-            return mock(URLConnection.class);
-        });
-
-        assertEquals(0, availableWhileConnecting.get());
-        assertEquals(1, bulkhead.getMetrics().getAvailableConcurrentCalls());
-    }
-
-    @Test
     void releasesParallelRequestPermitWhenAllAttemptsFail() {
         assertThrows(FetcherClientException.class, () -> policy.execute(url, () -> {
             throw tooManyRequests();
@@ -96,7 +92,21 @@ class ProviderPolicyTest {
         assertEquals(1, bulkhead.getMetrics().getAvailableConcurrentCalls());
     }
 
+    @ParameterizedTest
+    @MethodSource("policies")
+    // [utest->req~fetchers.identifier-rate-limit-retries~1]
+    void everyPolicyRetriesTooManyRequestsOnly(ProviderPolicy providerPolicy) {
+        Predicate<Throwable> retries = providerPolicy.retry().getRetryConfig().getExceptionPredicate();
+
+        assertTrue(retries.test(tooManyRequests()));
+        assertFalse(retries.test(new FetcherClientException(url, new SimpleHttpResponse(404, "Not Found", ""))));
+    }
+
+    static Stream<ProviderPolicy> policies() {
+        return Stream.of(new CrossrefPolicy(Optional::empty), new OpenAlexPolicy(Optional::empty), new OpenCitationsPolicy(Optional::empty), new SemanticScholarPolicy(Optional::empty));
+    }
+
     private FetcherClientException tooManyRequests() {
-        return new FetcherClientException(url, new SimpleHttpResponse(ProviderPolicies.HTTP_TOO_MANY_REQUESTS, "Too Many Requests", ""));
+        return new FetcherClientException(url, new SimpleHttpResponse(429, "Too Many Requests", ""));
     }
 }

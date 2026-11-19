@@ -20,7 +20,7 @@ import org.jabref.logic.importer.plaincitation.PlainCitationParser;
 import org.jabref.logic.importer.plaincitation.PlainCitationParserChoice;
 import org.jabref.logic.importer.plaincitation.PlainCitationParserFactory;
 import org.jabref.logic.importer.util.GrobidPreferences;
-import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.model.entry.BibEntry;
 import org.jabref.model.entry.field.Field;
 import org.jabref.model.entry.field.InternalField;
@@ -54,6 +54,7 @@ public class CrossRefCitationFetcher implements CitationFetcher {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final CrossRef crossRefForDoi;
+    private final WebResources webResources;
 
     public CrossRefCitationFetcher(
             ImporterPreferences importerPreferences,
@@ -69,6 +70,7 @@ public class CrossRefCitationFetcher implements CitationFetcher {
         this.aiPreferences = aiPreferences;
         this.chatModel = chatModel;
         this.crossRefForDoi = new CrossRef(importerPreferences);
+        this.webResources = new WebResources(importerPreferences);
     }
 
     @Override
@@ -94,7 +96,7 @@ public class CrossRefCitationFetcher implements CitationFetcher {
                                            ? PlainCitationParserFactory.getLlmPlainCitationParser(importFormatPreferences, aiPreferences, chatModel)
                                            : PlainCitationParserFactory.getPlainCitationParser(parserChoice, citationKeyPatternPreferences, grobidPreferences, importFormatPreferences);
 
-        try (InputStream stream = new URLDownload(uri.get().toString()).asInputStream()) {
+        try (InputStream stream = webResources.of(uri.get().toURL()).asInputStream()) {
             JsonNode node = mapper.readTree(stream);
             LOGGER.atDebug()
                   .addKeyValue("payload", node)

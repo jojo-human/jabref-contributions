@@ -27,6 +27,7 @@ import org.jabref.logic.importer.SearchBasedParserFetcher;
 import org.jabref.logic.importer.fetcher.transformers.DefaultQueryTransformer;
 import org.jabref.logic.importer.util.JsonReader;
 import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.logic.util.strings.StringSimilarity;
 import org.jabref.logic.util.strings.StringUtil;
 import org.jabref.model.entry.Author;
@@ -59,12 +60,15 @@ public class CrossRef implements IdParserFetcher<DOI>, EntryBasedParserFetcher, 
 
     private static final RemoveEnclosingBracesFormatter REMOVE_BRACES_FORMATTER = new RemoveEnclosingBracesFormatter();
 
-    public CrossRef() {
-        this(ImporterPreferences.getDefault());
+    private final WebResources webResources;
+
+    public CrossRef(ImporterPreferences importerPreferences) {
+        this.webResources = new WebResources(importerPreferences);
     }
 
-    /// The contact email for Crossref's polite pool is added by the Crossref provider policy in `URLDownload`.
-    public CrossRef(ImporterPreferences importerPreferences) {
+    @Override
+    public URLDownload getUrlDownload(URL url) {
+        return webResources.of(url);
     }
 
     @Override

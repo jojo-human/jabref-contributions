@@ -20,6 +20,7 @@ import org.jabref.logic.importer.Parser;
 import org.jabref.logic.importer.fetcher.transformers.DefaultQueryTransformer;
 import org.jabref.logic.importer.util.JsonReader;
 import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.logic.util.URLUtil;
 import org.jabref.logic.util.strings.StringUtil;
 import org.jabref.model.entry.BibEntry;
@@ -49,9 +50,11 @@ public class SemanticScholar implements FulltextFetcher, PagedSearchBasedParserF
     private static final String SOURCE_ID_SEARCH = "https://api.semanticscholar.org/v1/paper/";
     private static final String SOURCE_WEB_SEARCH = "https://api.semanticscholar.org/graph/v1/paper/search?";
     private final ImporterPreferences importerPreferences;
+    private final WebResources webResources;
 
     public SemanticScholar(ImporterPreferences importerPreferences) {
         this.importerPreferences = importerPreferences;
+        this.webResources = new WebResources(importerPreferences);
     }
 
     /// Tries to find a fulltext URL for a given BibTex entry.
@@ -122,9 +125,7 @@ public class SemanticScholar implements FulltextFetcher, PagedSearchBasedParserF
     }
 
     String getURLBySource(String source) throws IOException, FetcherException {
-        URLDownload download = new URLDownload(source);
-        importerPreferences.getApiKey(getName()).ifPresent(
-                key -> download.addHeader("x-api-key", key));
+        URLDownload download = webResources.of(URLUtil.create(source));
         JSONObject json = new JSONObject(download.asString());
         if (!json.has("paperId")) {
             throw new FetcherException("Page does not contain field \"paperId\"");
@@ -223,6 +224,11 @@ public class SemanticScholar implements FulltextFetcher, PagedSearchBasedParserF
         } catch (JSONException exception) {
             throw new ParseException("SemanticScholar API JSON format has changed", exception);
         }
+    }
+
+    @Override
+    public URLDownload getUrlDownload(URL url) {
+        return webResources.of(url);
     }
 
     @Override

@@ -28,6 +28,8 @@ import org.jabref.logic.importer.fetcher.citation.CitationFetcher;
 import org.jabref.logic.importer.fetcher.transformers.DefaultQueryTransformer;
 import org.jabref.logic.importer.util.JsonReader;
 import org.jabref.logic.net.ProgressInputStream;
+import org.jabref.logic.net.URLDownload;
+import org.jabref.logic.net.WebResources;
 import org.jabref.logic.util.URLUtil;
 import org.jabref.logic.util.strings.StringUtil;
 import org.jabref.model.entry.BibEntry;
@@ -88,10 +90,15 @@ public class OpenAlex implements CustomizableKeyFetcher, SearchBasedParserFetche
             Map.entry("software-paper", StandardEntryType.Article)
     );
 
-    private final ImporterPreferences importerPreferences;
+    private final WebResources webResources;
 
     public OpenAlex(ImporterPreferences importerPreferences) {
-        this.importerPreferences = importerPreferences;
+        this.webResources = new WebResources(importerPreferences);
+    }
+
+    @Override
+    public URLDownload getUrlDownload(URL url) {
+        return webResources.of(url);
     }
 
     @Override
@@ -141,7 +148,6 @@ public class OpenAlex implements CustomizableKeyFetcher, SearchBasedParserFetche
     @Override
     public URL getURLForQuery(BaseQueryNode queryNode) throws URISyntaxException, MalformedURLException {
         URIBuilder uriBuilder = new URIBuilder(URL_PATTERN);
-        importerPreferences.getApiKey(FETCHER_NAME).ifPresent(apiKey -> uriBuilder.addParameter("api_key", apiKey));
         uriBuilder.addParameter("search", new DefaultQueryTransformer().transformSearchQuery(queryNode).orElse(""));
         URL result = uriBuilder.build().toURL();
         LOGGER.debug("URL for query: {}", result);
@@ -172,7 +178,6 @@ public class OpenAlex implements CustomizableKeyFetcher, SearchBasedParserFetche
     private URIBuilder getUriBuilder(String tail, List<String> fieldsToSelect) throws MalformedURLException {
         try {
             URIBuilder uriBuilder = new URIBuilder(URL_PATTERN + tail);
-            importerPreferences.getApiKey(FETCHER_NAME).ifPresent(apiKey -> uriBuilder.addParameter("api_key", apiKey));
             String fieldList = String.join(",", fieldsToSelect);
             if (!fieldList.isEmpty()) {
                 uriBuilder.addParameter("select", fieldList);

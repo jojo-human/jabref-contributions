@@ -4,8 +4,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import javafx.collections.FXCollections;
+
 import org.jabref.logic.importer.FetcherClientException;
 import org.jabref.logic.importer.FetcherException;
+import org.jabref.logic.importer.ImporterPreferences;
 import org.jabref.model.entry.BibEntry;
 import org.jabref.model.entry.field.StandardField;
 import org.jabref.model.entry.types.StandardEntryType;
@@ -16,6 +19,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @ExternalServicesTest
 class CrossRefTest {
@@ -25,7 +30,9 @@ class CrossRefTest {
 
     @BeforeEach
     void setUp() {
-        fetcher = new CrossRef();
+        ImporterPreferences importerPreferences = mock(ImporterPreferences.class);
+        when(importerPreferences.getApiKeys()).thenReturn(FXCollections.emptyObservableSet());
+        fetcher = new CrossRef(importerPreferences);
 
         barrosEntry = new BibEntry();
         barrosEntry.setField(StandardField.TITLE, "Service Interaction Patterns");
