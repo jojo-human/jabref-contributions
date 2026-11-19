@@ -259,8 +259,6 @@ open module org.jabref.jablib {
     requires com.github.benmanes.caffeine;
     // endregion
 
-    requires dev.failsafe.core;
-
     // region: resilience4j
     requires io.github.resilience4j.bulkhead;
     requires io.github.resilience4j.core;
