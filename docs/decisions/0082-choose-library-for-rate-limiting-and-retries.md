@@ -5,10 +5,6 @@ parent: Decision Records
 
 # Choose a library for rate limiting and retries of provider requests
 
-`adr~fetchers.resilience-library~1`
-
-Needs: impl
-
 ## Context and Problem Statement
 
 JabRef has to stay below the request limits of the providers it queries (`req~fetchers.rate-limiting~1`) and retries requests rejected with HTTP 429 (`req~fetchers.identifier-rate-limit-retries~1`).
